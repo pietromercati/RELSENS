@@ -7,10 +7,17 @@
 #include <linux/jiffies.h>
 MODULE_LICENSE("Dual BSD/GPL");
 
+#define DEBUG_ON
 
 #define MY_INFO(str,arg...) printk(KERN_ALERT str, ## arg);
 #define NUM_CPU 8
+
+#ifdef DEBUG_ON
+#define THIS_DELAY 100 // default is 100
+#else
 #define THIS_DELAY 100
+#endif
+
 
 #define ODROIDXU3
 
@@ -23,12 +30,16 @@ struct my_timer_data {
 
 
 #ifdef ODROIDXU3 // the 
+#define EXYNOS_TMU_COUNT        5 // this should be the same as in exynos_thermal.c
+#define POWER_SENSOR_COUNT	4
 extern unsigned int volt_relsens[20];
 extern unsigned int temp_relsens[20];
 extern unsigned int freq_relsens[20];
 extern unsigned int volt_relsens_avg[20];
 extern unsigned int temp_relsens_avg[20];
+extern unsigned int temp_relsens_exynos[EXYNOS_TMU_COUNT];
 DECLARE_PER_CPU(unsigned int , freq_relsens_tmp);
+extern unsigned int voltage_sensors_odroid[POWER_SENSOR_COUNT];
 #endif
 
 unsigned int freq_to_volt(unsigned int freq){
@@ -50,7 +61,7 @@ void read_volt_temp(long unsigned int arg){
 
 	int i ;
 	int count = 0 ;
-
+	unsigned int temp_worst_case;
 
    	unsigned long j = jiffies;
 
@@ -62,23 +73,54 @@ void read_volt_temp(long unsigned int arg){
 	asm volatile ("MCR p15, 0, %0, c9, c12, 1\t\n" :: "r"(0x8000000f));   //enable_all_counter
 	asm volatile("mrc p15, 0, %0, c9, c13, 0" : "=r" (c_before));
 	#endif
-
 	// update frequency 
-	for ( i = 0 ; i < NUM_CPU ; i++ ) {
-		freq_relsens[i] = per_cpu(freq_relsens_tmp , i); 
+	freq_relsens[0] = per_cpu(freq_relsens_tmp , 0); 
+	freq_relsens[1] = per_cpu(freq_relsens_tmp , 0); 
+	freq_relsens[2] = per_cpu(freq_relsens_tmp , 0); 
+	freq_relsens[3] = per_cpu(freq_relsens_tmp , 0); 
+	freq_relsens[4] = per_cpu(freq_relsens_tmp , 4); 
+	freq_relsens[5] = per_cpu(freq_relsens_tmp , 4); 
+	freq_relsens[6] = per_cpu(freq_relsens_tmp , 4); 
+	freq_relsens[7] = per_cpu(freq_relsens_tmp , 4); 
 								//note: freq_relsens_tmp is defined per cpu because we get it inside of cpufreq.c
 								// but then it is better to have this data in a single vector freq_relsens
-	}		
 
 	// update voltage (converting from frequency)
-	for ( i = 0 ; i < NUM_CPU ; i++ ) {
-		volt_relsens[i] = freq_to_volt( freq_relsens[i] );
-	}
+	volt_relsens[0] = voltage_sensors_odroid[1];
+	volt_relsens[1] = voltage_sensors_odroid[1];
+	volt_relsens[2] = voltage_sensors_odroid[1];
+	volt_relsens[3] = voltage_sensors_odroid[1];
+	volt_relsens[4] = voltage_sensors_odroid[0];
+	volt_relsens[5] = voltage_sensors_odroid[0];
+	volt_relsens[6] = voltage_sensors_odroid[0];
+	volt_relsens[7] = voltage_sensors_odroid[0];
 
 	// update temperature
-	for ( i = 0 ; i < NUM_CPU ; i++ ) {
-		temp_relsens[i] = 0;   // TODO : find a way to get the real values
+
+	//----------temperture option #1: worst case---------------------
+	// get the maximum temperature of all sensors and assume that is the temperature of all cores (worst case assumption)
+	/*
+	temp_worst_case = temp_relsens_exynos[0];
+	for ( i = 1 ; i < EXYNOS_TMU_COUNT ; i++ ){
+		if (temp_worst_case < temp_relsens_exynos[i]){
+			temp_worst_case = temp_relsens_exynos[i];
+		}
 	}
+
+	for ( i = 0 ; i < NUM_CPU ; i++ ) {
+		temp_relsens[i] = temp_worst_case;   // TODO : find a way to get the real values
+	}
+	*/
+
+	//---------temeprature option #2: profiled---------------	
+	temp_relsens[0] = temp_relsens_exynos[2];
+	temp_relsens[1] = temp_relsens_exynos[2];
+	temp_relsens[2] = temp_relsens_exynos[2];
+	temp_relsens[3] = temp_relsens_exynos[2];
+	temp_relsens[4] = temp_relsens_exynos[0];
+	temp_relsens[5] = temp_relsens_exynos[3];
+	temp_relsens[6] = temp_relsens_exynos[2];
+	temp_relsens[7] = temp_relsens_exynos[1];
 
 	// update average voltage and temeprature
 	for ( i = 0 ; i < NUM_CPU ; i ++ ) {
@@ -99,6 +141,54 @@ void read_volt_temp(long unsigned int arg){
 	c_diff = c_after - c_before ; 
 	printk (KERN_ALERT "PIETRO DEBUG EXEC TIME TEMPERATURE MODULE : cycles_difference = %lu " , c_diff );
 	#endif
+
+	#ifdef DEBUG_ON
+	printk (KERN_ALERT "test temperature %u, %u, %u, %u, %u, %u, %u, %u\n", temp_relsens[0], 
+										temp_relsens[1], 
+										temp_relsens[2], 
+										temp_relsens[3], 
+										temp_relsens[4], 
+										temp_relsens[5], 
+										temp_relsens[6], 
+										temp_relsens[7]);
+
+	printk (KERN_ALERT "test avg temperature %u, %u, %u, %u, %u, %u, %u, %u\n", temp_relsens_avg[0], 
+										temp_relsens_avg[1], 
+										temp_relsens_avg[2], 
+										temp_relsens_avg[3], 
+										temp_relsens_avg[4], 
+										temp_relsens_avg[5], 
+										temp_relsens_avg[6], 
+										temp_relsens_avg[7]);
+
+	printk (KERN_ALERT "test frequencies %u, %u, %u, %u, %u, %u, %u, %u\n", 	freq_relsens[0], 
+											freq_relsens[1], 
+											freq_relsens[2], 
+											freq_relsens[3], 
+											freq_relsens[4], 
+											freq_relsens[5], 
+											freq_relsens[6], 
+											freq_relsens[7]);
+
+	printk (KERN_ALERT "test voltages %u, %u, %u, %u, %u, %u, %u, %u\n",         	volt_relsens[0],
+											volt_relsens[1],
+											volt_relsens[2],
+											volt_relsens[3],
+											volt_relsens[4],
+											volt_relsens[5],
+											volt_relsens[6],
+											volt_relsens[7]);
+
+        printk (KERN_ALERT "test avg voltages %u, %u, %u, %u, %u, %u, %u, %u\n",            volt_relsens_avg[0],
+                                                                                        volt_relsens_avg[1],
+                                                                                        volt_relsens_avg[2],
+                                                                                        volt_relsens_avg[3],
+                                                                                        volt_relsens_avg[4],
+                                                                                        volt_relsens_avg[5],
+                                                                                        volt_relsens_avg[6],
+                                                                                        volt_relsens_avg[7]);
+
+	#endif //DEBUG_ON
 
 	data->timer->expires = j + THIS_DELAY;
 	data->index = data->index + 1 ;
