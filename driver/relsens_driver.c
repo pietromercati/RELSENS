@@ -48,13 +48,23 @@
 #include <linux/device.h>  //for class_create
 
 #define RELSENS_MAJOR 33
-#define RELSENS_NAME "relsens"
+#define RELSENS_NAME "relsens_driver"
 
 #define EXYNOS_TMU_COUNT 5 // this has to be the same as in exynos_thermal.c and core.c
 
 #define SELECT_CPU 	1
-#define GET_AVG_VOLT 	2
+#define GET_AVG_VOLT 	6
 #define GET_AVG_TEMP	3
+#define RESET_COUNTER	4
+#define READ_COUNTER	5
+
+#define NUM_CPU		8
+extern int relsens_count;
+extern unsigned int volt_relsens_avg[20];
+extern unsigned int temp_relsens_avg[20];
+
+
+
 
 static int selected_cpu = 0;
 
@@ -69,17 +79,13 @@ static  struct  cdev    relsensDrvCDev;  //P: kernel's internal structure that r
 //------------------------------------------------------------------------------------------------------
 
 
-
-
-
-
 long relsens_mod_init(void){
-	printk(KERN_ALERT "PIETRO ALERT MODULE relsens mod init CPU%d ", smp_processor_id());
+printk(KERN_ALERT "PIETRO ALERT MODULE relsens driver init CPU%d ", smp_processor_id());
 	return 0;
 }
 
 long relsens_mod_exit(void){
-	printk(KERN_ALERT "PIETRO ALERT MODULE relsens mod exit CPU%d ", smp_processor_id());
+	printk(KERN_ALERT "PIETRO ALERT MODULE relsens driver exit CPU%d ", smp_processor_id());
 	return 0;
 }
 
@@ -92,7 +98,7 @@ long relsens_mod_exit(void){
 
 static int relsens_open (struct inode *inode, struct file *file) {
 	unsigned int i;
-	printk(KERN_ALERT "monitor_open\n");
+	printk(KERN_ALERT "relsens_driver_open\n");
 	// Init the MONITOR kernel process on a per cpu bases!
 	for_each_online_cpu(i) {
 		work_on_cpu(i, (void*)relsens_mod_init, NULL);
@@ -127,9 +133,27 @@ static long relsens_ioctl(struct file *file,
 			}
 			break;
 		case GET_AVG_VOLT:
-			break;
+
+		printk (KERN_ALERT "test avg voltages %u, %u, %u, %u, %u, %u, %u, %u\n",        volt_relsens_avg[0],
+                	                                                                        volt_relsens_avg[1],
+                        	                                                                volt_relsens_avg[2],
+                                	                                                        volt_relsens_avg[3],
+                                        	                                                volt_relsens_avg[4],
+                                                	                                        volt_relsens_avg[5],
+                                                        	                                volt_relsens_avg[6],
+                                                                	                        volt_relsens_avg[7]);
+
+			if (copy_to_user((unsigned int *)arg, volt_relsens_avg, NUM_CPU*sizeof(unsigned int)));
+                                return -EFAULT;
+                        break;
+
 		case GET_AVG_TEMP:
+			if (copy_to_user((unsigned int *)arg, temp_relsens_avg, NUM_CPU*sizeof(unsigned int)));
+                                return -EFAULT;
 			break;		
+		case RESET_COUNTER:
+			relsens_count = 0;
+                        break;
 	
 		default:
 			printk(KERN_ALERT "DEBUG: relsens_ioctrl - You should not be here!!!!\n");

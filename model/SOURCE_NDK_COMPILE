@@ -1,0 +1,2 @@
+export NDK_TOOLCHAIN=/home/pietro/WORK_FOLDER/android-ndk-r10c/toolchains/arm-linux-androideabi-4.6/prebuilt/linux-x86_64/bin/arm-linux-androideabi-
+export NDK_SYSROOT=/home/pietro/WORK_FOLDER/android-ndk-r10c/platforms/android-9/arch-arm

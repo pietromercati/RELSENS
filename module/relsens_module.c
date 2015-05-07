@@ -7,7 +7,7 @@
 #include <linux/jiffies.h>
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DEBUG_ON
+//#define DEBUG_ON
 
 #define MY_INFO(str,arg...) printk(KERN_ALERT str, ## arg);
 #define NUM_CPU 8
@@ -32,11 +32,13 @@ struct my_timer_data {
 #ifdef ODROIDXU3 // the 
 #define EXYNOS_TMU_COUNT        5 // this should be the same as in exynos_thermal.c
 #define POWER_SENSOR_COUNT	4
+// note: for generality, vectors are initialized quite long (20 in this case) so to potentially account for more sensors in different platforms
 extern unsigned int volt_relsens[20];
 extern unsigned int temp_relsens[20];
 extern unsigned int freq_relsens[20];
 extern unsigned int volt_relsens_avg[20];
 extern unsigned int temp_relsens_avg[20];
+
 extern unsigned int temp_relsens_exynos[EXYNOS_TMU_COUNT];
 DECLARE_PER_CPU(unsigned int , freq_relsens_tmp);
 extern unsigned int voltage_sensors_odroid[POWER_SENSOR_COUNT];
@@ -51,6 +53,8 @@ unsigned int freq_to_volt(unsigned int freq){
 	return volt;
 }
 
+extern int relsens_count;
+
 //----------------------------------------
 void read_volt_temp(long unsigned int arg){
 	#ifdef DEBUG_TIME
@@ -60,7 +64,6 @@ void read_volt_temp(long unsigned int arg){
 	struct my_timer_data *data = (struct my_timer_data *)arg;
 
 	int i ;
-	int count = 0 ;
 	unsigned int temp_worst_case;
 
    	unsigned long j = jiffies;
@@ -74,7 +77,7 @@ void read_volt_temp(long unsigned int arg){
 	asm volatile("mrc p15, 0, %0, c9, c13, 0" : "=r" (c_before));
 	#endif
 	// update frequency 
-	freq_relsens[0] = per_cpu(freq_relsens_tmp , 0); 
+	freq_relsens[0] = per_cpu(freq_relsens_tmp , 0); //note: the only values different from zero are read for core 0 and 4
 	freq_relsens[1] = per_cpu(freq_relsens_tmp , 0); 
 	freq_relsens[2] = per_cpu(freq_relsens_tmp , 0); 
 	freq_relsens[3] = per_cpu(freq_relsens_tmp , 0); 
@@ -113,6 +116,9 @@ void read_volt_temp(long unsigned int arg){
 	*/
 
 	//---------temeprature option #2: profiled---------------	
+
+	// temperature are assigned with previous characterization (the sensors assigned are those more influenced
+	// by the activity there). 
 	temp_relsens[0] = temp_relsens_exynos[2];
 	temp_relsens[1] = temp_relsens_exynos[2];
 	temp_relsens[2] = temp_relsens_exynos[2];
@@ -124,14 +130,14 @@ void read_volt_temp(long unsigned int arg){
 
 	// update average voltage and temeprature
 	for ( i = 0 ; i < NUM_CPU ; i ++ ) {
-		volt_relsens_avg[i] = count*volt_relsens_avg[i] + volt_relsens[i];
-		volt_relsens_avg[i] = volt_relsens_avg[i] / ( count + 1);
+		volt_relsens_avg[i] = relsens_count * volt_relsens_avg[i] + volt_relsens[i];
+		volt_relsens_avg[i] = volt_relsens_avg[i] / ( relsens_count + 1);
 	
-		temp_relsens_avg[i] = count*temp_relsens_avg[i] + temp_relsens[i];
-		temp_relsens_avg[i] = temp_relsens_avg[i] / ( count + 1);
+		temp_relsens_avg[i] = relsens_count * temp_relsens_avg[i] + temp_relsens[i];
+		temp_relsens_avg[i] = temp_relsens_avg[i] / ( relsens_count + 1);
 
-		count = count + 1;
 	} 
+	relsens_count = relsens_count + 1;
 
 	//debug
 	#ifdef DEBUG_TIME
@@ -179,7 +185,7 @@ void read_volt_temp(long unsigned int arg){
 											volt_relsens[6],
 											volt_relsens[7]);
 
-        printk (KERN_ALERT "test avg voltages %u, %u, %u, %u, %u, %u, %u, %u\n",            volt_relsens_avg[0],
+        printk (KERN_ALERT "test avg voltages %u, %u, %u, %u, %u, %u, %u, %u\n",        volt_relsens_avg[0],
                                                                                         volt_relsens_avg[1],
                                                                                         volt_relsens_avg[2],
                                                                                         volt_relsens_avg[3],
